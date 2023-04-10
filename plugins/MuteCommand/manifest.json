@@ -1,0 +1,14 @@
+{
+    "name": "Mute Command",
+    "description": "Команда для выдачи тайм-аутов.",
+    "authors": [
+        {
+            "name": "Nixea",
+            "id": "827609921327202304"
+        }
+    ],
+    "main": "src/index.js",
+    "vendetta": {
+        "icon": "ic_badge_staff"
+    }
+}
