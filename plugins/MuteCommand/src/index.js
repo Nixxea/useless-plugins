@@ -3,7 +3,9 @@ import { findByProps } from '@vendetta/metro';
 
 const Messages = findByProps('sendBotMessage');
 const Moderation = findByProps('setCommunicationDisabledUntil');
-const Users = findByProps('getUsers');
+const UserStore = findByProps('getUsers');
+const PermissionStore = findByProps('canManageUser');
+const canTimeout = findByProps('canToggleCommunicationDisableOnUser').canToggleCommunicationDisableOnUser;
 
 const names = {
     years: ['год', 'года', 'лет'],
@@ -49,7 +51,6 @@ function parseTime(text) {
 
     return time || null;
 }
-
 function parseDate(text) {
     const matched = text.match(/^(?:(\d{1,2})\.(\d{1,2})(?:\.(\d{1,4}))?)?(?:(?:\s|-| в | in )?(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/);
     if (!matched || !matched[0]) return null;
@@ -141,13 +142,19 @@ export default {
             ],
             type: 1,
             inputType: 1,
+            predicate(ctx) {
+                return PermissionStore.can(1n << 40n, ctx.guild);
+            },
             async execute(args, ctx) {
                 const userId = args.find(a => a.name === 'участник').value;
                 const timeString = args.find(a => a.name === 'время').value;
                 const reason = args.find(a => a.name === 'причина')?.value;
 
-                const user = Users.getUser(userId);
+                const user = UserStore.getUser(userId);
                 const time = getTime(timeString);
+
+                if (!time) return Messages.sendBotMessage(ctx.channel.id, 'Не удалось разобрать время тайм-аута');
+                if (!canTimeout(ctx.guild.id, userId)) return Messages.sendBotMessage(ctx.channel.id, 'Вы не можете выдавать тайм-аут этому пользователю');
 
                 Moderation.setCommunicationDisabledUntil(ctx.guild.id, userId, new Date(Date.now() + time).toISOString(), null, reason);
 
