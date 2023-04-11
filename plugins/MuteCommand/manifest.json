@@ -1,6 +1,6 @@
 {
     "name": "Mute Command",
-    "description": "Команда для выдачи тайм-аутов.",
+    "description": "Time out members with custom time.",
     "authors": [
         {
             "name": "Nixea",

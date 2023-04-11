@@ -7,17 +7,10 @@ const UserStore = findByProps('getUsers');
 const PermissionStore = findByProps('canManageUser');
 const canTimeout = findByProps('canToggleCommunicationDisableOnUser').canToggleCommunicationDisableOnUser;
 
-const names = {
-    years: ['год', 'года', 'лет'],
-    days: ['день', 'дня', 'дней'],
-    hours: ['час', 'часа', 'часов'],
-    minutes: ['минуту', 'минуты', 'минут'],
-    seconds: ['секунду', 'секунды', 'секунд']
-};
+const MAX_MUTE_TIME = 2419200000;
+const MANAGE_MEMBERS = 1n << 40n;
 
 const timeTriggers = {
-    мес: 2592000000,
-    mo: 2592000000,
     с: 1000,
     м: 60000,
     ч: 3600000,
@@ -52,6 +45,7 @@ function parseTime(text) {
     return time || null;
 }
 function parseDate(text) {
+    // date format is russian only
     const matched = text.match(/^(?:(\d{1,2})\.(\d{1,2})(?:\.(\d{1,4}))?)?(?:(?:\s|-| в | in )?(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/);
     if (!matched || !matched[0]) return null;
 
@@ -72,28 +66,6 @@ function parseDate(text) {
     return target;
 }
 
-function parseMs(ms) {
-    const round = ms > 0 ? Math.floor : Math.ceil;
-
-    return {
-        years: round(ms / 31536000000),
-        days: round(ms / 86400000) % 365,
-        hours: round(ms / 3600000) % 24,
-        minutes: round(ms / 60000) % 60,
-        seconds: round(ms / 1000) % 60
-    };
-}
-
-function plural(array, n, insertNumber = false) {
-    n = +n;
-    const word = array[n % 10 === 1 && n % 100 !== 11 ? 0 : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 1 : 2];
-    return insertNumber ? `${n} ${word}` : word;
-}
-
-function formatTime(ms, d = 2) {
-    return Object.entries(parseMs(ms)).filter(d => d[1]).slice(0, d).map(d => plural(names[d[0]], d[1], true)).join(' ');
-}
-
 function getTime(text) {
     const parsedTime = parseTime(text);
     if (parsedTime) return parsedTime;
@@ -107,35 +79,34 @@ function getTime(text) {
 export default {
     commands: [],
     onLoad() {
-
         this.registerCommand({
             name: 'mute',
             displayName: 'mute',
-            description: 'Отправляет подумать о своем поведении.',
-            displayDescription: 'Отправляет подумать о своем поведении.',
+            description: 'Time out member.',
+            displayDescription: 'Time out member.',
             applicationId: '-1',
             options: [
                 {
-                    name: 'участник',
-                    displayName: 'участник',
-                    description: 'Участник, которого нужно отправить подумать о своем поведении',
-                    displayDescription: 'Участник, которого нужно отправить подумать о своем поведении',
+                    name: 'member',
+                    displayName: 'member',
+                    description: 'The member to time out',
+                    displayDescription: 'The member to time out',
                     required: true,
                     type: 6
                 },
                 {
-                    name: 'время',
-                    displayName: 'время',
-                    description: 'Время молчания',
-                    displayDescription: 'Время молчания',
+                    name: 'time',
+                    displayName: 'time',
+                    description: 'Time out time or date',
+                    displayDescription: 'Time out time or date',
                     required: true,
                     type: 3
                 },
                 {
-                    name: 'причина',
-                    displayName: 'причина',
-                    description: 'Причина подумать о своем поведении',
-                    displayDescription: 'Причина подумать о своем поведении',
+                    name: 'reason',
+                    displayName: 'reason',
+                    description: 'The reason for time out',
+                    displayDescription: 'The reason for time out',
                     required: false,
                     type: 3
                 }
@@ -143,22 +114,27 @@ export default {
             type: 1,
             inputType: 1,
             predicate(ctx) {
-                return PermissionStore.can(1n << 40n, ctx.guild);
+                return PermissionStore.can(MANAGE_MEMBERS, ctx.guild);
             },
             async execute(args, ctx) {
-                const userId = args.find(a => a.name === 'участник').value;
-                const timeString = args.find(a => a.name === 'время').value;
-                const reason = args.find(a => a.name === 'причина')?.value;
+                const userId = args.find(a => a.name === 'member').value;
+                const timeString = args.find(a => a.name === 'time').value;
+                const reason = args.find(a => a.name === 'reason')?.value;
 
                 const user = UserStore.getUser(userId);
-                const time = getTime(timeString);
 
-                if (!time) return Messages.sendBotMessage(ctx.channel.id, 'Не удалось разобрать время тайм-аута');
-                if (!canTimeout(ctx.guild.id, userId)) return Messages.sendBotMessage(ctx.channel.id, 'Вы не можете выдавать тайм-аут этому пользователю');
+                if (!canTimeout(ctx.guild.id, userId)) return Messages.sendBotMessage(ctx.channel.id, 'You cannot time out this member.');
 
-                Moderation.setCommunicationDisabledUntil(ctx.guild.id, userId, new Date(Date.now() + time).toISOString(), null, reason);
+                let time = getTime(timeString);
+                if (!time) return Messages.sendBotMessage(ctx.channel.id, `Seems like \`${timeString}\` is not a valid time string.\nFor example: \`1h30m\` or \`1hour 10m\``);
 
-                const replyText = `**${user?.tag || userId}** был отправлен подумать о своем поведении на \`${formatTime(time)}\``;
+                time = Math.min(MAX_MUTE_TIME, time);
+                const timestamp = Date.now() + time;
+                const unixTimestamp = timestamp / 1000 | 0;
+
+                Moderation.setCommunicationDisabledUntil(ctx.guild.id, userId, new Date(timestamp).toISOString(), null, reason);
+
+                const replyText = `**${user?.tag || userId}** has been timed out for <t:${unixTimestamp}:R>, <t:${unixTimestamp}:d> <t:${unixTimestamp}:T>`;
                 Messages.sendBotMessage(ctx.channel.id, replyText);
             }
         });
