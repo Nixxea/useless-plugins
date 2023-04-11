@@ -149,6 +149,6 @@ export default {
     },
 
     registerCommand(command) {
-        this.commands.push(registerCommand(command))
+        this.commands.push(registerCommand(command));
     }
 }
