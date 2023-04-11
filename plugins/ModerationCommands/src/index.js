@@ -6,9 +6,13 @@ const Moderation = findByProps('setCommunicationDisabledUntil');
 const UserStore = findByProps('getUsers');
 const PermissionStore = findByProps('canManageUser');
 const canTimeout = findByProps('canToggleCommunicationDisableOnUser').canToggleCommunicationDisableOnUser;
+const saveChannel = findByProps('saveChannel').saveChannel;
 
-const MAX_MUTE_TIME = 2419200000;
-const MANAGE_MEMBERS = 1n << 40n;
+const Permissions = findByProps('Permissions').Permissions;
+const { ApplicationCommandOptionType, ApplicationCommandType } = findByProps('ApplicationCommandOptionType');
+
+const MAX_TIMEOUT_TIME = 2419200000;
+const MAX_SLOWMODE_TIME = 21600;
 
 const timeTriggers = {
     с: 1000,
@@ -92,7 +96,7 @@ export default {
                     description: 'The member to time out',
                     displayDescription: 'The member to time out',
                     required: true,
-                    type: 6
+                    type: ApplicationCommandOptionType.USER
                 },
                 {
                     name: 'time',
@@ -100,7 +104,7 @@ export default {
                     description: 'Time out time or date',
                     displayDescription: 'Time out time or date',
                     required: true,
-                    type: 3
+                    type: ApplicationCommandOptionType.STRING
                 },
                 {
                     name: 'reason',
@@ -108,13 +112,13 @@ export default {
                     description: 'The reason for time out',
                     displayDescription: 'The reason for time out',
                     required: false,
-                    type: 3
+                    type: ApplicationCommandOptionType.STRING
                 }
             ],
             type: 1,
             inputType: 1,
             predicate(ctx) {
-                return PermissionStore.can(MANAGE_MEMBERS, ctx.guild);
+                return PermissionStore.can(Permissions.MODERATE_MEMBERS, ctx.guild);
             },
             async execute(args, ctx) {
                 const userId = args.find(a => a.name === 'member').value;
@@ -128,13 +132,55 @@ export default {
                 let time = getTime(timeString);
                 if (!time) return Messages.sendBotMessage(ctx.channel.id, `Seems like \`${timeString}\` is not a valid time string.\nFor example: \`1h30m\` or \`1hour 10m\``);
 
-                time = Math.min(MAX_MUTE_TIME, time);
+                time = Math.min(MAX_TIMEOUT_TIME, time);
                 const timestamp = Date.now() + time;
                 const unixTimestamp = timestamp / 1000 | 0;
 
                 Moderation.setCommunicationDisabledUntil(ctx.guild.id, userId, new Date(timestamp).toISOString(), null, reason);
 
                 const replyText = `**${user?.tag || userId}** has been timed out for <t:${unixTimestamp}:R>, <t:${unixTimestamp}:d> <t:${unixTimestamp}:T>`;
+                Messages.sendBotMessage(ctx.channel.id, replyText);
+            }
+        });
+
+        this.registerCommand({
+            name: 'slowmode',
+            displayName: 'slowmode',
+            description: 'Set slowmode on the channel.',
+            displayDescription: 'Set slowmode on the channel.',
+            options: [
+                {
+                    name: 'time',
+                    displayName: 'time',
+                    description: 'Time out time or date',
+                    displayDescription: 'Time out time or date',
+                    required: true,
+                    type: ApplicationCommandOptionType.STRING
+                },
+                {
+                    name: 'channel',
+                    displayName: 'channel',
+                    description: 'The reason for time out',
+                    displayDescription: 'The reason for time out',
+                    required: false,
+                    type: ApplicationCommandOptionType.CHANNEL
+                }
+            ],
+            type: ApplicationCommandType.CHAT,
+            predicate(ctx) {
+                return PermissionStore.can(Permissions.MANAGE_CHANNELS, ctx.channel);
+            },
+            async execute(args, ctx) {
+                const channelId = args.find(a => a.name === 'channel')?.value || ctx.channel.id;
+                const timeString = args.find(a => a.name === 'time').value;
+
+                let time = parseTime(timeString) / 1000 | 0;
+                if (typeof time !== 'number') return Messages.sendBotMessage(ctx.channel.id, `Seems like \`${timeString}\` is not a valid time string.\nFor example: \`1h30m\` or \`1hour 10m\``);
+                time = Math.min(MAX_SLOWMODE_TIME, time);
+
+                saveChannel(channelId, { rateLimitPerUser: time });
+
+                const replyText = `Slowmode for the channel has been set to \`${time}\` seconds.`;
                 Messages.sendBotMessage(ctx.channel.id, replyText);
             }
         });
