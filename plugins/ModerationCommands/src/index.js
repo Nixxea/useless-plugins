@@ -136,9 +136,14 @@ export default {
                 const timestamp = Date.now() + time;
                 const unixTimestamp = timestamp / 1000 | 0;
 
-                Moderation.setCommunicationDisabledUntil(ctx.guild.id, userId, new Date(timestamp).toISOString(), null, reason);
+                Moderation.setCommunicationDisabledUntil({
+                    guildId: ctx.guild.id,
+                    userId,
+                    communicationDisabledUntilTimestamp: new Date(Date.now() + time).toISOString(),
+                    reason
+                });
 
-                const replyText = `**${user?.tag || userId}** has been timed out for <t:${unixTimestamp}:R>, <t:${unixTimestamp}:d> <t:${unixTimestamp}:T>`;
+                const replyText = `**${(user.discriminator === '0' ? user.username : user.tag) || userId}** has been timed out for <t:${unixTimestamp}:R>, <t:${unixTimestamp}:d> <t:${unixTimestamp}:T>`;
                 Messages.sendBotMessage(ctx.channel.id, replyText);
             }
         });
@@ -197,4 +202,4 @@ export default {
     registerCommand(command) {
         this.commands.push(registerCommand(command));
     }
-}
+};
